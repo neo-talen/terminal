@@ -16,6 +16,7 @@
 #include "../../renderer/atlas/AtlasEngine.h"
 #include "../../renderer/dx/DxRenderer.hpp"
 
+#include "SelectionColor.g.cpp"
 #include "ControlCore.g.cpp"
 
 using namespace ::Microsoft::Console::Types;
@@ -2091,6 +2092,59 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             {
                 UserScrollViewport(0);
                 _terminalScrollPositionChanged(0, viewHeight, bufferSize);
+            }
+        }
+    }
+
+    void ControlCore::ColorSelection(Control::SelectionColor fg, Control::SelectionColor bg, uint32_t matchMode)
+    {
+        if (HasSelection())
+        {
+            auto pForeground = winrt::get_self<implementation::SelectionColor>(fg);
+            auto pBackground = winrt::get_self<implementation::SelectionColor>(bg);
+
+            TextColor foregroundAsTextColor;
+            TextColor backgroundAsTextColor;
+
+            if (pForeground)
+            {
+                auto colorFg = pForeground->Color();
+                if (colorFg.a == 1)
+                {
+                    // We're dealing with indexed colors.
+                    foregroundAsTextColor.SetIndex(colorFg.r, false);
+                }
+                else
+                {
+                    foregroundAsTextColor.SetColor(colorFg);
+                }
+            }
+
+            if (pBackground)
+            {
+                auto colorBg = pBackground->Color();
+                if (colorBg.a == 1)
+                {
+                    // We're dealing with indexed colors.
+                    backgroundAsTextColor.SetIndex(colorBg.r, false);
+                }
+                else
+                {
+                    backgroundAsTextColor.SetColor(colorBg);
+                }
+            }
+
+            TextAttribute attr;
+            attr.SetForeground(foregroundAsTextColor);
+            attr.SetBackground(backgroundAsTextColor);
+
+            _terminal->ColorSelection(attr, matchMode);
+            _terminal->ClearSelection();
+            if (matchMode > 0)
+            {
+                // TODO: can this be scoped down further?
+                // one problem is that at this point on the stack, we don't know what changed
+                _renderer->TriggerRedrawAll();
             }
         }
     }

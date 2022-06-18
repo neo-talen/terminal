@@ -86,6 +86,7 @@ istream
 IStringable
 ITab
 ITaskbar
+itow
 IUri
 IVirtual
 KEYSELECT
