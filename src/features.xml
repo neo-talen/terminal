@@ -81,7 +81,7 @@
         <description>If enabled, the foreground color will, when necessary, be automatically adjusted to make it more visible.</description>
         <stage>AlwaysEnabled</stage>
     </feature>
-    
+
     <feature>
         <name>Feature_VtPassthroughMode</name>
         <description>Enables passthrough option per profile in Terminal and ConPTY ability to use passthrough API dispatch engine</description>
@@ -123,6 +123,12 @@
             <brandingToken>Dev</brandingToken>
             <brandingToken>Preview</brandingToken>
         </alwaysEnabledBrandingTokens>
+    </feature>
+
+    <feature>
+        <name>Feature_UnicodeTextSegmentation</name>
+        <description>Enables support for UAX #29 via libicu.</description>
+        <stage>AlwaysEnabled</stage>
     </feature>
 
 </featureStaging>

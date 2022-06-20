@@ -249,7 +249,7 @@ using Microsoft::Console::VirtualTerminal::StateMachine;
     if (coordCursor.Y >= bufferSize.Y)
     {
         // At the end of the buffer. Scroll contents of screen buffer so new position is visible.
-        FAIL_FAST_IF(!(coordCursor.Y == bufferSize.Y));
+        //FAIL_FAST_IF(!(coordCursor.Y == bufferSize.Y));
         if (!StreamScrollRegion(screenInfo))
         {
             Status = STATUS_NO_MEMORY;
@@ -331,6 +331,167 @@ using Microsoft::Console::VirtualTerminal::StateMachine;
                                         const DWORD dwFlags,
                                         _Inout_opt_ til::CoordType* const psScrollY)
 {
+#if 1
+    static constexpr wchar_t tabSpaces[8]{ L' ', L' ', L' ', L' ', L' ', L' ', L' ', L' ' };
+
+    try
+    {
+        UNREFERENCED_PARAMETER(sOriginalXPosition);
+        UNREFERENCED_PARAMETER(pwchBuffer);
+        UNREFERENCED_PARAMETER(pwchBufferBackupLimit);
+
+        const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+        auto& textBuffer = screenInfo.GetTextBuffer();
+        auto& cursor = textBuffer.GetCursor();
+        const auto textBufferSize = textBuffer.GetSize().Dimensions();
+        const auto Attributes = textBuffer.GetCurrentAttributes();
+        const auto bufferSize = *pcb / sizeof(wchar_t);
+        auto it = pwchRealUnicode;
+        const auto end = it + bufferSize;
+        til::point written;
+
+        auto cursorPos = cursor.GetPosition();
+        if (cursor.IsDelayedEOLWrap() && WI_IsFlagSet(screenInfo.OutputMode, ENABLE_WRAP_AT_EOL_OUTPUT))
+        {
+            const auto coordDelayedAt = cursor.GetDelayedAtPosition();
+            cursor.ResetDelayEOLWrap();
+            if (coordDelayedAt == cursorPos)
+            {
+                cursorPos.X = 0;
+                cursorPos.Y++;
+            }
+        }
+
+        while (it != end)
+        {
+            const auto nextControlChar = std::find_if(it, end, [](const auto& wch) { return IS_CONTROL_CHAR(wch); });
+            if (nextControlChar != it)
+            {
+                written += textBuffer.Write(cursorPos, { it, nextControlChar }, Attributes);
+                it = nextControlChar;
+            }
+
+            for (; it != end && IS_CONTROL_CHAR(*it); ++it)
+            {
+                switch (*it)
+                {
+                case UNICODE_BELL:
+                    if (WI_IsFlagClear(dwFlags, WC_PRINTABLE_CONTROL_CHARS))
+                    {
+                        std::ignore = screenInfo.SendNotifyBeep();
+                        continue;
+                    }
+                    break;
+                case UNICODE_BACKSPACE:
+                {
+                    const auto wrapsLineUp = cursorPos.x <= 0 && cursorPos.y > 0 && WI_IsFlagClear(dwFlags, WC_LIMIT_BACKSPACE);
+                    if (wrapsLineUp)
+                    {
+                        cursorPos.y--;
+                        cursorPos.x = textBufferSize.width;
+                    }
+
+                    auto& row = textBuffer.GetRowByOffset(cursorPos.y);
+                    // TODO: In case of pwchBufferBackupLimit != pwchBuffer,
+                    // we have to interpret the escape codes in pwchBufferBackupLimit.
+                    // If it contains a \t for instance (which we previously interpreted as up to 8 spaces)
+                    // then we now have to back off 8 spaces instead of just 1. Same for WC_PRINTABLE_CONTROL_CHARS.
+                    cursorPos.x = row.PrecedingColumn(cursorPos.x);
+
+                    if (WI_IsFlagSet(dwFlags, WC_DESTRUCTIVE_BACKSPACE))
+                    {
+                        if (wrapsLineUp)
+                        {
+                            row.SetWrapForced(false);
+                        }
+
+                        auto pos = cursorPos;
+                        written -= textBuffer.Write(pos, { &tabSpaces[0], 1 }, Attributes);
+                    }
+                    continue;
+                }
+                case UNICODE_TAB:
+                    // A tab at the end of a line turns into a newline
+                    if (cursorPos.x >= textBufferSize.width)
+                    {
+                        // TODO: SetWrapForced(true);
+                        cursorPos.x = 0;
+                        cursorPos.y++;
+                        if (cursorPos.y >= textBufferSize.height)
+                        {
+                            cursorPos.y = textBufferSize.height - 1;
+                            textBuffer.IncrementCircularBuffer();
+                        }
+                    }
+                    else
+                    {
+                        const auto cols = std::min(NUMBER_OF_SPACES_IN_TAB(1), textBufferSize.width - cursorPos.x - 1);
+                        if (cols > 0)
+                        {
+                            written += textBuffer.Write(cursorPos, { &tabSpaces[0], gsl::narrow_cast<size_t>(cols) }, Attributes);
+                        }
+                    }
+                    continue;
+                case UNICODE_LINEFEED:
+                    textBuffer.GetRowByOffset(cursorPos.y).SetWrapForced(false);
+                    if (gci.IsReturnOnNewlineAutomatic())
+                    {
+                        cursorPos.x = 0;
+                    }
+                    cursorPos.x = 0;
+                    cursorPos.y++;
+                    if (cursorPos.y >= textBufferSize.height)
+                    {
+                        cursorPos.y = textBufferSize.height - 1;
+                        textBuffer.IncrementCircularBuffer();
+                    }
+                    continue;
+                case UNICODE_CARRIAGERETURN:
+                    cursorPos.x = 0;
+                    continue;
+                default:
+                    break;
+                }
+
+                if (WI_IsFlagSet(dwFlags, WC_PRINTABLE_CONTROL_CHARS))
+                {
+                    const wchar_t wchs[2]{ L'^', static_cast<wchar_t>(*it + L'@') };
+                    written += textBuffer.Write(cursorPos, { &wchs[0], 2 }, Attributes);
+                }
+            }
+        }
+
+        if (pcSpaces)
+        {
+            *pcSpaces = written.x;
+        }
+
+        if (psScrollY)
+        {
+            *psScrollY = -written.y;
+        }
+
+        if (cursorPos.x >= textBufferSize.width && WI_IsFlagSet(screenInfo.OutputMode, ENABLE_WRAP_AT_EOL_OUTPUT))
+        {
+            cursorPos.x = textBufferSize.width - 1;
+            cursor.DelayEOLWrap(cursorPos);
+        }
+        std::ignore = screenInfo.SetCursorPosition(cursorPos, WI_IsFlagSet(dwFlags, WC_KEEP_CURSOR_VISIBLE));
+        if (WI_IsFlagSet(dwFlags, WC_KEEP_CURSOR_VISIBLE))
+        {
+            screenInfo.MakeCursorVisible(cursorPos);
+        }
+
+        if (ServiceLocator::LocateGlobals().pRender != nullptr)
+        {
+            til::point delta{ 0, -written.y };
+            ServiceLocator::LocateGlobals().pRender->TriggerScroll(&delta);
+        }
+
+        return S_OK;
+    }
+    NT_CATCH_RETURN()
+#else
     const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     auto& textBuffer = screenInfo.GetTextBuffer();
     auto& cursor = textBuffer.GetCursor();
@@ -552,9 +713,19 @@ using Microsoft::Console::VirtualTerminal::StateMachine;
                 i = coordScreenBufferSize.X - CursorPosition.X;
             }
 
-            // line was wrapped if we're writing up to the end of the current row
-            OutputCellIterator it(std::wstring_view(LocalBuffer, i), Attributes);
-            const auto itEnd = screenInfo.Write(it);
+            til::CoordType distance;
+            if constexpr (Feature_UnicodeTextSegmentation::IsEnabled())
+            {
+                auto pos = cursor.GetPosition();
+                distance = textBuffer.Write(pos, std::wstring_view(LocalBuffer, i), Attributes);
+            }
+            else
+            {
+                // line was wrapped if we're writing up to the end of the current row
+                OutputCellIterator it(std::wstring_view(LocalBuffer, i), Attributes);
+                const auto itEnd = screenInfo.Write(it);
+                distance = itEnd.GetCellDistance(it);
+            }
 
             // Notify accessibility
             if (screenInfo.HasAccessibilityEventing())
@@ -564,7 +735,7 @@ using Microsoft::Console::VirtualTerminal::StateMachine;
 
             // The number of "spaces" or "cells" we have consumed needs to be reported and stored for later
             // when/if we need to erase the command line.
-            TempNumSpaces += itEnd.GetCellDistance(it);
+            TempNumSpaces += distance;
             // WCL-NOTE: We are using the "estimated" X position delta instead of the actual delta from
             // WCL-NOTE: the iterator. It is not clear why. If they differ, the cursor ends up in the
             // WCL-NOTE: wrong place (typically inside another character).
@@ -859,12 +1030,11 @@ using Microsoft::Console::VirtualTerminal::StateMachine;
             {
                 const auto TargetPoint = cursor.GetPosition();
                 auto& Row = textBuffer.GetRowByOffset(TargetPoint.Y);
-                const auto& charRow = Row.GetCharRow();
 
                 try
                 {
                     // If we're on top of a trailing cell, clear it and the previous cell.
-                    if (charRow.DbcsAttrAt(TargetPoint.X).IsTrailing())
+                    if (Row.DbcsAttrAt(TargetPoint.X).IsTrailing())
                     {
                         // Space to clear for 2 cells.
                         OutputCellIterator it(UNICODE_SPACE, 2);
@@ -915,6 +1085,7 @@ using Microsoft::Console::VirtualTerminal::StateMachine;
     }
 
     return STATUS_SUCCESS;
+#endif
 }
 
 // Routine Description:
