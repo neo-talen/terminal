@@ -43,6 +43,7 @@
 #include "ClearBufferArgs.g.cpp"
 #include "MultipleActionsArgs.g.cpp"
 #include "AdjustOpacityArgs.g.cpp"
+#include "ColorSelectionArgs.g.cpp"
 
 #include <LibraryResources.h>
 #include <WtExeUtils.h>
@@ -837,6 +838,160 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             return winrt::hstring{
                 fmt::format(std::wstring_view(RS_(L"AdjustOpacityCommandKey")),
                             Opacity())
+            };
+        }
+    }
+
+    // TODO: Localization?
+    template<size_t bufLen>
+    const wchar_t* _FormatColorString(wchar_t (&tempBuf)[bufLen], uint32_t color)
+    {
+        const wchar_t* colorStr = nullptr;
+
+        if ((color & 0x01000000) == 0x01000000)
+        {
+            // It's an indexed color.
+            uint8_t idx = color & 0x000000ff;
+
+            switch (idx)
+            {
+            case 0:
+                colorStr = L"black";
+                break;
+
+            case 1:
+                colorStr = L"dark red";
+                break;
+
+            case 2:
+                colorStr = L"dark green";
+                break;
+
+            case 3:
+                colorStr = L"dark yellow";
+                break;
+
+            case 4:
+                colorStr = L"dark blue";
+                break;
+
+            case 5:
+                colorStr = L"dark magenta";
+                break;
+
+            case 6:
+                colorStr = L"dark cyan";
+                break;
+
+            case 7:
+                colorStr = L"gray"; // "dark white"?
+                break;
+
+            case 8:
+                colorStr = L"dark gray"; // "bright black"?
+                break;
+
+            case 9:
+                colorStr = L"red";
+                break;
+
+            case 10:
+                colorStr = L"green";
+                break;
+
+            case 11:
+                colorStr = L"yellow";
+                break;
+
+            case 12:
+                colorStr = L"blue";
+                break;
+
+            case 13:
+                colorStr = L"magenta";
+                break;
+
+            case 14:
+                colorStr = L"cyan";
+                break;
+
+            case 15:
+                colorStr = L"white";
+                break;
+
+            default:
+                swprintf_s(tempBuf, L"i%02i", idx);
+                colorStr = tempBuf;
+            }
+        }
+        else
+        {
+            auto err = _itow_s(color, tempBuf, 16);
+            assert(err == 0);
+            UNREFERENCED_PARAMETER(err);
+            colorStr = tempBuf;
+        }
+
+        return colorStr;
+    }
+
+    // TODO: Localization?
+    winrt::hstring ColorSelectionArgs::GenerateName() const
+    {
+        auto matchMode = MatchMode() ? MatchMode() : 0;
+
+        auto matchModeStr = L"";
+        if (matchMode)
+        {
+            if (matchMode == 1)
+            {
+                matchModeStr = L", all matches";
+            }
+        }
+
+        bool hasForeground = (bool)Foreground();
+        bool hasBackground = (bool)Background();
+
+        wchar_t fgBuf[9] = { 0 };
+        wchar_t bgBuf[9] = { 0 };
+
+        const wchar_t* fgStr = nullptr;
+        const wchar_t* bgStr = nullptr;
+
+        fgStr = hasForeground ? _FormatColorString(fgBuf, Foreground().TextColor()) : L"(default)";
+        bgStr = hasBackground ? _FormatColorString(bgBuf, Background().TextColor()) : L"(default)";
+
+        // To try to keep things simple for the user, we'll try to show only the
+        // "interesting" color (i.e. leave off the bg or fg if it is either unspecified or
+        // black or index 0).
+        //
+        // Note that we mask off the alpha channel, which is used to indicate if it's an
+        // indexed color.
+        bool foregroundIsExplicitBlack = hasForeground && (Foreground().TextColor() & 0x00ffffff) == 0;
+        bool backgroundIsExplicitBlack = hasBackground && (Background().TextColor() & 0x00ffffff) == 0;
+
+        if (hasForeground && (!hasBackground || backgroundIsExplicitBlack))
+        {
+            return winrt::hstring{
+                fmt::format(L"Color selection, foreground: {}{}", fgStr, matchModeStr)
+            };
+        }
+        else if (hasBackground && (!hasForeground || foregroundIsExplicitBlack))
+        {
+            return winrt::hstring{
+                fmt::format(L"Color selection, background: {}{}", bgStr, matchModeStr)
+            };
+        }
+        else if (hasForeground && hasBackground)
+        {
+            return winrt::hstring{
+                fmt::format(L"Color selection, foreground: {}, background: {}{}", fgStr, bgStr, matchModeStr)
+            };
+        }
+        else
+        {
+            return winrt::hstring{
+                fmt::format(L"Color selection, (default fg/bg){}", matchModeStr)
             };
         }
     }

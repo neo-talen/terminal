@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "SelectionColor.g.h"
 #include "ControlCore.g.h"
 #include "ControlSettings.h"
 #include "../../audio/midi/MidiAudio.hpp"
@@ -40,6 +41,28 @@ public:                                                           \
 
 namespace winrt::Microsoft::Terminal::Control::implementation
 {
+    struct SelectionColor : SelectionColorT<SelectionColor>
+    {
+        SelectionColor() = default;
+        WINRT_PROPERTY(uint32_t, TextColor);
+
+    public:
+        til::color Color() const
+        {
+            if (_TextColor & 0xff000000)
+            {
+                // We indicate that this is an indexed color by setting alpha to 1:
+                return til::color(gsl::narrow_cast<uint8_t>(_TextColor), 0, 0, 1);
+            }
+            else
+            {
+                return til::color(static_cast<uint8_t>((_TextColor & 0xff000000) >> 24),
+                                  static_cast<uint8_t>((_TextColor & 0x00ff0000) >> 16),
+                                  static_cast<uint8_t>((_TextColor & 0x0000ff00) >> 8));
+            }
+        };
+    };
+
     struct ControlCore : ControlCoreT<ControlCore>
     {
     public:
@@ -103,6 +126,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         Windows::Foundation::IReference<Core::Point> HoveredCell() const;
 
         ::Microsoft::Console::Types::IUiaData* GetUiaData() const;
+
+        void ColorSelection(Control::SelectionColor fg, Control::SelectionColor bg, uint32_t matchMode);
 
         void Close();
 
@@ -337,5 +362,6 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
 namespace winrt::Microsoft::Terminal::Control::factory_implementation
 {
+    BASIC_FACTORY(SelectionColor);
     BASIC_FACTORY(ControlCore);
 }
