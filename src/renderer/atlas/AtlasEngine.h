@@ -6,6 +6,7 @@
 #include <d2d1.h>
 #include <d3d11_1.h>
 #include <dwrite_3.h>
+#include <til/hash.h>
 
 #include "../../renderer/inc/IRenderEngine.hpp"
 
@@ -477,7 +478,8 @@ namespace Microsoft::Console::Render
             {
                 const auto d = data();
 #pragma warning(suppress : 26490) // Don't use reinterpret_cast (type.1).
-                return std::_Fnv1a_append_bytes(std::_FNV_offset_basis, reinterpret_cast<const u8*>(d), dataSize(d->charCount));
+                //return std::_Fnv1a_append_bytes(std::_FNV_offset_basis, reinterpret_cast<const u8*>(d), dataSize(d->charCount));
+                return til::hash(d, dataSize(d->charCount));
             }
 
             bool operator==(const AtlasKey& rhs) const noexcept
@@ -579,6 +581,7 @@ namespace Microsoft::Console::Render
                 return _lru.end();
             }
 
+            __declspec(noinline)
             iterator find(const AtlasKey& key)
             {
                 const auto it = _map.find(key);
@@ -891,7 +894,7 @@ namespace Microsoft::Console::Render
         void _drawGlyph(const AtlasQueueItem& item) const;
         void _drawCursor();
 
-        static constexpr bool debugGlyphGenerationPerformance = false;
+        static constexpr bool debugGlyphGenerationPerformance = true;
         static constexpr bool debugGeneralPerformance = false || debugGlyphGenerationPerformance;
 
         static constexpr u16 u16min = 0x0000;
