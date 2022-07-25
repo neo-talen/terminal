@@ -8,9 +8,12 @@
 #include <dwrite_3.h>
 
 #include "../../renderer/inc/IRenderEngine.hpp"
+#include "DWriteTextAnalysis.h"
 
 namespace Microsoft::Console::Render
 {
+    struct TextAnalysisSinkResult;
+
     class AtlasEngine final : public IRenderEngine
     {
     public:
@@ -394,9 +397,10 @@ namespace Microsoft::Console::Render
         struct FontMetrics
         {
             wil::com_ptr<IDWriteFontCollection> fontCollection;
-            wil::unique_process_heap_string fontName;
+            std::wstring fontName;
             float baselineInDIP = 0.0f;
             float fontSizeInDIP = 0.0f;
+            f32x2 scale;
             u16x2 cellSize;
             u16 fontWeight = 0;
             u16 underlinePos = 0;
@@ -943,12 +947,11 @@ namespace Microsoft::Console::Render
             Buffer<Cell, 32> cells; // invalidated by ApiInvalidations::Size
             Buffer<TileHashMap::iterator> cellGlyphMapping; // invalidated by ApiInvalidations::Size
             f32x2 cellSizeDIP; // invalidated by ApiInvalidations::Font, caches _api.cellSize but in DIP
-            u16x2 cellSize; // invalidated by ApiInvalidations::Font, caches _api.cellSize
             u16x2 cellCount; // invalidated by ApiInvalidations::Font|Size, caches _api.cellCount
-            u16 underlinePos = 0;
-            u16 strikethroughPos = 0;
-            u16 lineThickness = 0;
             u16 dpi = USER_DEFAULT_SCREEN_DPI; // invalidated by ApiInvalidations::Font, caches _api.dpi
+            FontMetrics fontMetrics; // invalidated by ApiInvalidations::Font, cached _api.fontMetrics
+            f32 dipPerPixel = 1.0f; // invalidated by ApiInvalidations::Font, caches USER_DEFAULT_SCREEN_DPI / _api.dpi
+            f32 pixelPerDIP = 1.0f; // invalidated by ApiInvalidations::Font, caches _api.dpi / USER_DEFAULT_SCREEN_DPI
             u16x2 atlasSizeInPixel; // invalidated by ApiInvalidations::Font
             TileHashMap glyphs;
             TileAllocator tileAllocator;
@@ -979,7 +982,7 @@ namespace Microsoft::Console::Render
             std::vector<wchar_t> bufferLine;
             std::vector<u16> bufferLineColumn;
             Buffer<BufferLineMetadata> bufferLineMetadata;
-            std::vector<TextAnalyzerResult> analysisResults;
+            std::vector<TextAnalysisSinkResult> analysisResults;
             Buffer<u16> clusterMap;
             Buffer<DWRITE_SHAPING_TEXT_PROPERTIES> textProps;
             Buffer<u16> glyphIndices;
@@ -988,7 +991,7 @@ namespace Microsoft::Console::Render
             Buffer<DWRITE_GLYPH_OFFSET> glyphOffsets;
             std::vector<DWRITE_FONT_FEATURE> fontFeatures; // changes are flagged as ApiInvalidations::Font|Size
             std::vector<DWRITE_FONT_AXIS_VALUE> fontAxisValues; // changes are flagged as ApiInvalidations::Font|Size
-            FontMetrics fontMetrics; // changes are flagged as ApiInvalidations::Font|Size
+            FontMetrics fontMetrics; // changes are flagged as ApiInvalidations::Font
 
             u16x2 cellCount; // caches `sizeInPixel / cellSize`
             u16x2 sizeInPixel; // changes are flagged as ApiInvalidations::Size

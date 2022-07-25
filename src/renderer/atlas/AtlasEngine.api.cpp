@@ -272,7 +272,7 @@ CATCH_RETURN()
     DWRITE_TEXT_METRICS metrics;
     RETURN_IF_FAILED(textLayout->GetMetrics(&metrics));
 
-    *pResult = static_cast<unsigned int>(std::ceil(metrics.width)) > _api.fontMetrics.cellSize.x;
+    *pResult = static_cast<unsigned int>(std::ceilf(metrics.width)) > _api.fontMetrics.cellSize.x;
     return S_OK;
 }
 
@@ -605,31 +605,39 @@ void AtlasEngine::_resolveFontMetrics(const wchar_t* requestedFaceName, const Fo
     // Point sizes are commonly treated at a 72 DPI scale
     // (including by OpenType), whereas DirectWrite uses 96 DPI.
     // Since we want the height in px we multiply by the display's DPI.
-    const auto fontSizeInPx = std::ceil(requestedSize.Y / 72.0 * _api.dpi);
+    const auto fontSizeInPx = std::ceilf(requestedSize.Y / 72.0f * _api.dpi);
 
-    const auto designUnitsPerPx = fontSizeInPx / static_cast<double>(metrics.designUnitsPerEm);
-    const auto ascentInPx = static_cast<double>(metrics.ascent) * designUnitsPerPx;
-    const auto descentInPx = static_cast<double>(metrics.descent) * designUnitsPerPx;
-    const auto lineGapInPx = static_cast<double>(metrics.lineGap) * designUnitsPerPx;
-    const auto advanceWidthInPx = static_cast<double>(glyphMetrics.advanceWidth) * designUnitsPerPx;
+    const auto designUnitsPerPx = fontSizeInPx / static_cast<float>(metrics.designUnitsPerEm);
+    const auto ascentInPx = static_cast<float>(metrics.ascent) * designUnitsPerPx;
+    const auto descentInPx = static_cast<float>(metrics.descent) * designUnitsPerPx;
+    const auto lineGapInPx = static_cast<float>(metrics.lineGap) * designUnitsPerPx;
+    const auto advanceWidthInPx = static_cast<float>(glyphMetrics.advanceWidth) * designUnitsPerPx;
 
-    const auto halfGapInPx = lineGapInPx / 2.0;
-    const auto baseline = std::ceil(ascentInPx + halfGapInPx);
-    const auto cellWidth = gsl::narrow<u16>(std::ceil(advanceWidthInPx));
-    const auto cellHeight = gsl::narrow<u16>(std::ceil(baseline + descentInPx + halfGapInPx));
+    const auto halfGapInPx = lineGapInPx / 2.0f;
+    const auto baselineInPx = std::ceilf(ascentInPx + halfGapInPx);
+    const auto lineHeightInPx = baselineInPx + descentInPx + halfGapInPx;
+
+    // How large a Terminal "cell" would like to be in fractional pixels.
+    const f32x2 theoreticalSize{ advanceWidthInPx, lineHeightInPx };
+    // Since there are no fractional pixels, we need to round the cell size.
+    const f32x2 practicalSize{ std::ceilf(theoreticalSize.x), std::ceilf(theoreticalSize.y) };
+    const u16x2 cellSize{ gsl::narrow<u16>(practicalSize.x), gsl::narrow<u16>(practicalSize.y) };
+    // Given a glyph size in fractional units, multiplying it by scale will yield a glyph size in
+    // cell-sized units. It basically compensates for us rounding theoreticalSize to practicalSize.
+    const f32x2 scale{ practicalSize.x / theoreticalSize.x, practicalSize.y / theoreticalSize.y };
 
     {
         til::size coordSize;
-        coordSize.X = cellWidth;
-        coordSize.Y = cellHeight;
+        coordSize.X = cellSize.x;
+        coordSize.Y = cellSize.y;
 
         if (requestedSize.X == 0)
         {
             // The coordSizeUnscaled parameter to SetFromEngine is used for API functions like GetConsoleFontSize.
             // Since clients expect that settings the font height to Y yields back a font height of Y,
-            // we're scaling the X relative/proportional to the actual cellWidth/cellHeight ratio.
+            // we're scaling the X relative/proportional to the actual cellSize.x/.y ratio.
             // The code below uses a poor form of integer rounding.
-            requestedSize.X = (requestedSize.Y * cellWidth + cellHeight / 2) / cellHeight;
+            requestedSize.X = (requestedSize.Y * cellSize.x + cellSize.y / 2) / cellSize.y;
         }
 
         fontInfo.SetFromEngine(requestedFaceName, requestedFamily, requestedWeight, false, coordSize, requestedSize);
@@ -637,15 +645,15 @@ void AtlasEngine::_resolveFontMetrics(const wchar_t* requestedFaceName, const Fo
 
     if (fontMetrics)
     {
-        const auto underlineOffsetInPx = static_cast<double>(-metrics.underlinePosition) * designUnitsPerPx;
-        const auto underlineThicknessInPx = static_cast<double>(metrics.underlineThickness) * designUnitsPerPx;
-        const auto strikethroughOffsetInPx = static_cast<double>(-metrics.strikethroughPosition) * designUnitsPerPx;
-        const auto strikethroughThicknessInPx = static_cast<double>(metrics.strikethroughThickness) * designUnitsPerPx;
-        const auto lineThickness = gsl::narrow<u16>(std::round(std::min(underlineThicknessInPx, strikethroughThicknessInPx)));
-        const auto underlinePos = gsl::narrow<u16>(std::ceil(baseline + underlineOffsetInPx - lineThickness / 2.0));
-        const auto strikethroughPos = gsl::narrow<u16>(std::round(baseline + strikethroughOffsetInPx - lineThickness / 2.0));
+        const auto underlineOffsetInPx = static_cast<float>(-metrics.underlinePosition) * designUnitsPerPx;
+        const auto underlineThicknessInPx = static_cast<float>(metrics.underlineThickness) * designUnitsPerPx;
+        const auto strikethroughOffsetInPx = static_cast<float>(-metrics.strikethroughPosition) * designUnitsPerPx;
+        const auto strikethroughThicknessInPx = static_cast<float>(metrics.strikethroughThickness) * designUnitsPerPx;
+        const auto lineThickness = gsl::narrow<u16>(std::roundf(std::min(underlineThicknessInPx, strikethroughThicknessInPx)));
+        const auto underlinePos = gsl::narrow<u16>(std::ceilf(baselineInPx + underlineOffsetInPx - lineThickness / 2.0f));
+        const auto strikethroughPos = gsl::narrow<u16>(std::roundf(baselineInPx + strikethroughOffsetInPx - lineThickness / 2.0f));
 
-        auto fontName = wil::make_process_heap_string(requestedFaceName);
+        std::wstring fontName{ requestedFaceName };
         const auto fontWeight = gsl::narrow<u16>(requestedWeight);
 
         // NOTE: From this point onward no early returns or throwing code should exist,
@@ -653,9 +661,10 @@ void AtlasEngine::_resolveFontMetrics(const wchar_t* requestedFaceName, const Fo
 
         fontMetrics->fontCollection = std::move(fontCollection);
         fontMetrics->fontName = std::move(fontName);
-        fontMetrics->fontSizeInDIP = static_cast<float>(fontSizeInPx / static_cast<double>(_api.dpi) * 96.0);
-        fontMetrics->baselineInDIP = static_cast<float>(baseline / static_cast<double>(_api.dpi) * 96.0);
-        fontMetrics->cellSize = { cellWidth, cellHeight };
+        fontMetrics->fontSizeInDIP = fontSizeInPx / static_cast<float>(_api.dpi) * 96.0f;
+        fontMetrics->baselineInDIP = baselineInPx / static_cast<float>(_api.dpi) * 96.0f;
+        fontMetrics->scale = scale;
+        fontMetrics->cellSize = cellSize;
         fontMetrics->fontWeight = fontWeight;
         fontMetrics->underlinePos = underlinePos;
         fontMetrics->strikethroughPos = strikethroughPos;
