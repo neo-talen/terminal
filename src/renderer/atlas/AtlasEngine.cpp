@@ -609,7 +609,7 @@ try
         WI_SetFlagIf(flags, CellFlags::BorderTop, textAttributes.IsTopHorizontalDisplayed());
         WI_SetFlagIf(flags, CellFlags::BorderRight, textAttributes.IsRightVerticalDisplayed());
         WI_SetFlagIf(flags, CellFlags::BorderBottom, textAttributes.IsBottomHorizontalDisplayed());
-        WI_SetFlagIf(flags, CellFlags::Underline, textAttributes.IsUnderlined());
+        WI_SetFlagIf(flags, CellFlags::Underline, textAttributes.IsUnderlined() || textAttributes.IsDoublyUnderlined());
         WI_SetFlagIf(flags, CellFlags::UnderlineDotted, hyperlinkId != 0);
         WI_SetFlagIf(flags, CellFlags::UnderlineDouble, textAttributes.IsDoublyUnderlined());
         WI_SetFlagIf(flags, CellFlags::Strikethrough, textAttributes.IsCrossedOut());
@@ -1003,7 +1003,7 @@ void AtlasEngine::_recreateFontDependentResources()
     {
         _r.underlinePos = _api.fontMetrics.underlinePos;
         _r.strikethroughPos = _api.fontMetrics.strikethroughPos;
-        _r.lineThickness = _api.fontMetrics.lineThickness;
+        _r.lineWidth = _api.fontMetrics.lineThickness;
         _r.dpi = _api.dpi;
     }
     {

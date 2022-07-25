@@ -612,11 +612,24 @@ void AtlasEngine::_resolveFontMetrics(const wchar_t* requestedFaceName, const Fo
     const auto descentInPx = static_cast<double>(metrics.descent) * designUnitsPerPx;
     const auto lineGapInPx = static_cast<double>(metrics.lineGap) * designUnitsPerPx;
     const auto advanceWidthInPx = static_cast<double>(glyphMetrics.advanceWidth) * designUnitsPerPx;
+    const auto underlineOffsetInPx = static_cast<double>(-metrics.underlinePosition) * designUnitsPerPx;
+    const auto underlineThicknessInPx = static_cast<double>(metrics.underlineThickness) * designUnitsPerPx;
+    const auto strikethroughOffsetInPx = static_cast<double>(-metrics.strikethroughPosition) * designUnitsPerPx;
+    const auto strikethroughThicknessInPx = static_cast<double>(metrics.strikethroughThickness) * designUnitsPerPx;
+    const auto lineThicknessInPx = std::round(std::max(1.0, std::min(underlineThicknessInPx, strikethroughThicknessInPx)));
 
     const auto halfGapInPx = lineGapInPx / 2.0;
     const auto baseline = std::ceil(ascentInPx + halfGapInPx);
+    const auto underlinePosInPx = std::ceil(baseline + underlineOffsetInPx - lineThicknessInPx / 2.0);
+    const auto strikethroughPosInPx = std::round(baseline + strikethroughOffsetInPx - lineThicknessInPx / 2.0);
+    const auto cellHeightViaDescent = std::ceil(baseline + descentInPx + halfGapInPx);
+    // A double-underline is 3 lines tall due to a 1 line gap between the two lines.
+    // This logic should be kept in sync with AtlasEngine::_updateConstantBuffer,
+    // which calculates the offset/position of the lower line.
+    const auto cellHeightViaUnderlines = underlinePosInPx + 3 * lineThicknessInPx;
+
     const auto cellWidth = gsl::narrow<u16>(std::ceil(advanceWidthInPx));
-    const auto cellHeight = gsl::narrow<u16>(std::ceil(baseline + descentInPx + halfGapInPx));
+    const auto cellHeight = gsl::narrow<u16>(std::max(cellHeightViaDescent, cellHeightViaUnderlines));
 
     {
         til::size coordSize;
@@ -637,13 +650,9 @@ void AtlasEngine::_resolveFontMetrics(const wchar_t* requestedFaceName, const Fo
 
     if (fontMetrics)
     {
-        const auto underlineOffsetInPx = static_cast<double>(-metrics.underlinePosition) * designUnitsPerPx;
-        const auto underlineThicknessInPx = static_cast<double>(metrics.underlineThickness) * designUnitsPerPx;
-        const auto strikethroughOffsetInPx = static_cast<double>(-metrics.strikethroughPosition) * designUnitsPerPx;
-        const auto strikethroughThicknessInPx = static_cast<double>(metrics.strikethroughThickness) * designUnitsPerPx;
-        const auto lineThickness = gsl::narrow<u16>(std::round(std::min(underlineThicknessInPx, strikethroughThicknessInPx)));
-        const auto underlinePos = gsl::narrow<u16>(std::ceil(baseline + underlineOffsetInPx - lineThickness / 2.0));
-        const auto strikethroughPos = gsl::narrow<u16>(std::round(baseline + strikethroughOffsetInPx - lineThickness / 2.0));
+        const auto lineThickness = gsl::narrow<u16>(lineThicknessInPx);
+        const auto underlinePos = gsl::narrow<u16>(underlinePosInPx);
+        const auto strikethroughPos = gsl::narrow<u16>(strikethroughPosInPx);
 
         auto fontName = wil::make_process_heap_string(requestedFaceName);
         const auto fontWeight = gsl::narrow<u16>(requestedWeight);

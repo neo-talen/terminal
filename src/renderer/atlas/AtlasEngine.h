@@ -823,8 +823,10 @@ namespace Microsoft::Console::Render
             alignas(sizeof(f32)) f32 enhancedContrast = 0;
             alignas(sizeof(u32)) u32 cellCountX = 0;
             alignas(sizeof(u32x2)) u32x2 cellSize;
-            alignas(sizeof(u32x2)) u32x2 underlinePos;
-            alignas(sizeof(u32x2)) u32x2 strikethroughPos;
+            alignas(sizeof(u32)) u32 underlinePos = 0;
+            alignas(sizeof(u32)) u32 underlineDoublePos = 0;
+            alignas(sizeof(u32)) u32 strikethroughPos = 0;
+            alignas(sizeof(u32)) u32 lineWidth = 0;
             alignas(sizeof(u32)) u32 backgroundColor = 0;
             alignas(sizeof(u32)) u32 cursorColor = 0;
             alignas(sizeof(u32)) u32 selectionColor = 0;
@@ -947,7 +949,7 @@ namespace Microsoft::Console::Render
             u16x2 cellCount; // invalidated by ApiInvalidations::Font|Size, caches _api.cellCount
             u16 underlinePos = 0;
             u16 strikethroughPos = 0;
-            u16 lineThickness = 0;
+            u16 lineWidth = 0;
             u16 dpi = USER_DEFAULT_SCREEN_DPI; // invalidated by ApiInvalidations::Font, caches _api.dpi
             u16x2 atlasSizeInPixel; // invalidated by ApiInvalidations::Font
             TileHashMap glyphs;

@@ -125,10 +125,12 @@ void AtlasEngine::_updateConstantBuffer() const noexcept
     data.cellCountX = _r.cellCount.x;
     data.cellSize.x = _r.cellSize.x;
     data.cellSize.y = _r.cellSize.y;
-    data.underlinePos.x = _r.underlinePos;
-    data.underlinePos.y = _r.underlinePos + _r.lineThickness;
-    data.strikethroughPos.x = _r.strikethroughPos;
-    data.strikethroughPos.y = _r.strikethroughPos + _r.lineThickness;
+    data.underlinePos = _r.underlinePos;
+    // This logic should be kept in sync with AtlasEngine::_resolveFontMetrics,
+    // which reserves enough space so that the double underline is fully visible.
+    data.underlineDoublePos = _r.underlinePos + 2 * _r.lineWidth;
+    data.strikethroughPos = _r.strikethroughPos;
+    data.lineWidth = _r.lineWidth;
     data.backgroundColor = _r.backgroundColor;
     data.cursorColor = _r.cursorOptions.cursorColor;
     data.selectionColor = _r.selectionColor;
